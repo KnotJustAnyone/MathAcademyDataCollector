@@ -6,7 +6,7 @@ import json
 from urllib.parse import urlparse
 from datetime import datetime
 from dateutil import parser
-import teacher_data
+import teacher_data #A file with all the credentials, a blank template is in the repository
 
 canvas_domain = "https://pasadena.instructure.com"
 course_domain = f"{canvas_domain}/api/v1/courses"
@@ -29,8 +29,8 @@ ma_headers = {
 #Prints the Group IDS to use for the new Assignment creation
 def assignment_group_ids(grade): 
     if grade == None:
-        load_class_roster(6)
-        load_class_roster(8)
+        for grade_level in course_ids:
+            assignment_group_ids(grade_level)
         return
     course_id = course_ids[grade]
     url = f'{course_domain}/{course_id}/assignment_groups'
@@ -41,8 +41,8 @@ def assignment_group_ids(grade):
 # as user id: name
 def update_canvas_roster(grade):
     if grade == None:
-        update_canvas_roster(6)
-        update_canvas_roster(8)
+        for grade_level in course_ids:
+            update_canvas_roster(grade_level)
         return
     course_id = course_ids[grade]
     url = f'{course_domain}/{course_id}/enrollments'
@@ -154,71 +154,11 @@ def save_canvas_scores(grade):
             all_scores[student_id][assignment_id] = score
     json.dump(all_scores, open('canvas_scores_'+str(grade)+'.json','w'), indent = 4)
 
-#Takes scores from the gradebook and from canvas,
-#checks which scores need to be updated and updates them
-def push_scores(grade = None):
-    if grade == None:
-        push_scores(6)
-        push_scores(8)
-        return
-    course_id = course_ids[grade]
-    data = sheet_data("Grade "+str(grade)+" Gradebook!A1:CC40")
-    all_scores = load_scores(grade)
-    print(f"Scores loaded from {grade}th grade spreadsheet")
-    for col in range(2,len(data[0])):
-        for row in data[2:]:
-            user_id = row[0]
-            if (col < len(row) and needs_update(
-                all_scores[user_id][data[0][col]],row[col])):
-                url = f"{course_domain}/{course_id}/assignments/{data[0][col]}/submissions/{row[0]}"
-                response = requests.put(url, headers=canvas_headers, json={
-                    "submission": {
-                        "posted_grade": str(row[col]),
-                        "grade": str(row[col])
-                    }
-                })
-                if response.status_code != 200:
-                    print(f"Failed To Update {row[0]} - {data[0][col]}:{response.text}")
-                else:
-                    print(f"Updated {row[1]} - {data[1][col]}:{all_scores[row[0]][data[0][col]]}->{row[col]}")
-        print(f"Updated {data[1][col]}")
-    save_canvas_scores(grade)
-    print("Stored Grades Updated")
-
-#Finds Missing Assignments From the Spreadsheet, but doesn't add them
-#I want it to add the assignments with assignment ids for the xp assignments
-def update_assignment_list(grade = None): 
-    if grade == None:
-        update_assignment_list(6)
-        update_assignment_list(8)
-        return
-    course_id = course_ids[grade]
-    result = service.spreadsheets().values().get(
-        spreadsheetId = spreadsheet_id,
-        range = "Grade " + str(grade) + " Gradebook!C1:ZZ2"
-    ).execute()
-    data = result.get('values',[])
-    canvas_list = load_assignments(grade)
-    if len(data)!= 0:
-        sheet_set = set([(data[1][col],data[0][col]) for col in range(len(data[0]))])
-    else:
-        sheet_set = set()
-    canvas_set = set([(assignment['name'],str(assignment['id'])) for assignment in canvas_list])
-    missing_set = canvas_set-sheet_set
-    print(missing_set)
-#    payload = [assignment for assignment in missing_set]
-#    service.spreadsheets().values().update(
-#        spreadsheetId = spreadsheet_id,
-#        range = "Grade " + str(grade) + " Gradebook!C1",
-#        valueInputOption = "RAW",
-#        body = payload
-#    )
-
 #Creates and saves to a JSON file a dictionary of name:student_id
 def pull_math_academy_roster(grade):
     if grade == None:
-        pull_math_academy_roster(6)
-        pull_math_academy_roster(8)
+        for grade_level in class_IDs:
+            pull_math_academy_roster(grade_level)
         return
     class_ID = class_IDs[grade]
     url = f"https://mathacademy.com/classes/{class_ID}"
@@ -239,8 +179,8 @@ def pull_math_academy_roster(grade):
 #Pulls the data from the activity page of a student
 def pull_math_academy_assignment_data(grade = None, student = None):
     if grade == None:
-        pull_math_academy_assignment_data(6, student)
-        pull_math_academy_assignment_data(8, student)
+        for grade_level in class_IDs:
+            pull_math_academy_assignment_data(grade_level, student)
         return
     class_ID = class_IDs[grade]
     roster = json.load(open("MA_Roster_"+str(grade)+".json","r"))
@@ -377,3 +317,4 @@ try:
             canvas_scores[grade] = json.load(file)
 except FileNotFoundError:
     save_canvas_scores(None)
+
