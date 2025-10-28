@@ -215,22 +215,27 @@ def pull_math_academy_assignment_data(grade = None, student = None):
 
 #In Progress
 #Computes points per week and updates them
-def update_xp_scores(grade = 6, canvas_id = None, update_after = True):
+def update_xp_scores(grade = None, canvas_id = None, with_refresh = True, update_after = True):
+    if grade == None:
+        for grade in course_ids:
+            update_xp_scores(grade, canvas_id, with_refresh, update_after)
+        return
     if canvas_id == None:
         print(f"Updating {grade}th grade class")
-        canvas_ids = canvas_roster[grade].keys()
-        for id in canvas_ids:
-            update_xp_scores(grade, id, False)
-            print(f"{canvas_roster[grade][id]} updated")
+        for canvas_id in canvas_roster[grade]:
+            update_xp_scores(grade, canvas_id, with_refresh, False)
+            print(f"{canvas_roster[grade][canvas_id]} updated")
         if update_after:
             save_canvas_scores(grade)
             print("Saved Scores Updated")
         return
     course_id = course_ids[grade]
     name = canvas_roster[grade][canvas_id]
+    if with_refresh:
+        pull_math_academy_assignment_data(grade, name)
     xp_totals = weekly_total_xp(name)
     #Ignore current week, 40 xp is 1 point
-    points = [xp/40 for xp in xp_totals[:-1]]
+    points = {week:xp_totals[week]/40 for week in range(len(xp_totals)-1)}
     apply_extra_credit_discount(points)
     prior_scores = canvas_scores[grade][canvas_id]
     assignments = load_assignments(grade)
@@ -238,9 +243,13 @@ def update_xp_scores(grade = 6, canvas_id = None, update_after = True):
     exceptions = xp_update_exceptions(canvas_id)
     for assignment in assignments:
         if (len(assignment['name']) > 10 and
-            assignment['name'][:10] == 'Weekly XP ' and
-            int(assignment['name'][10:]) not in exceptions):
-            homeworks.append(assignment)
+            assignment['name'][:10] == 'Weekly XP '):
+            week = int(assignment['name'][10:])
+            assignment_id = str(assignment['id'])
+            if (week not in exceptions and
+                week in points.keys() and
+                needs_update(prior_scores[assignment_id],points[week])):
+                homeworks.append(assignment)   
     for assignment in homeworks:
         week = int(assignment['name'][10:])
         assignment_id = str(assignment['id'])
@@ -305,14 +314,14 @@ def xp_update_exceptions(canvas_id = None):
 #Loads data which is called for multiple times at file run
 try:
     canvas_roster = {}
-    for grade in course_ids.keys():
+    for grade in course_ids:
         with open(f'canvas_roster_{grade}.json','r') as file:
             canvas_roster[grade] = json.load(file)
 except FileNotFoundError:
     update_canvas_roster(None)
 try:
     canvas_scores = {}
-    for grade in course_ids.keys():
+    for grade in course_ids:
         with open(f'canvas_scores_{grade}.json','r') as file:
             canvas_scores[grade] = json.load(file)
 except FileNotFoundError:
