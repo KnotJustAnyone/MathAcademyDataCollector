@@ -157,11 +157,11 @@ def save_canvas_scores(grade):
 #Creates and saves to a JSON file a dictionary of name:student_id
 def pull_math_academy_roster(grade):
     if grade == None:
-        for grade_level in class_IDs:
+        for grade_level in class_ids:
             pull_math_academy_roster(grade_level)
         return
-    class_ID = class_IDs[grade]
-    url = f"https://mathacademy.com/classes/{class_ID}"
+    class_id = class_ids[grade]
+    url = f"https://mathacademy.com/classes/{class_id}"
     response = requests.get(url,headers=ma_headers,cookies=cookies)
     soup = BeautifulSoup(response.text, "lxml")
     table = soup.find(id = "students")
@@ -179,17 +179,17 @@ def pull_math_academy_roster(grade):
 #Pulls the data from the activity page of a student
 def pull_math_academy_assignment_data(grade = None, student = None):
     if grade == None:
-        for grade_level in class_IDs:
+        for grade_level in class_ids:
             pull_math_academy_assignment_data(grade_level, student)
         return
-    class_ID = class_IDs[grade]
+    class_id = class_ids[grade]
     roster = json.load(open("MA_Roster_"+str(grade)+".json","r"))
     if student == None:
         for name in roster:
             pull_math_academy_assignment_data(grade, name)
             print(f"Pulled {name} assignment data")
         return
-    url = f"https://mathacademy.com/classes/{class_ID}/students/{roster[student]}/activity"
+    url = f"https://mathacademy.com/classes/{class_id}/students/{roster[student]}/activity"
     response = requests.get(url,headers=ma_headers,cookies=cookies)
     soup = BeautifulSoup(response.text, "lxml")
     task_table = soup.find_all('table')[5]

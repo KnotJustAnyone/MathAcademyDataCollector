@@ -21,3 +21,8 @@ cookies = {
     "session":None,
     "session.sig":None
 }
+
+#Github Access Token:
+github_token = {
+    #github token
+}
