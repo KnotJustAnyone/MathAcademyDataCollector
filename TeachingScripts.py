@@ -194,7 +194,12 @@ def pull_math_academy_assignment_data(grade = None, student = None):
     soup = BeautifulSoup(response.text, "lxml")
     task_table = soup.find_all('table')[5]
     task_rows = task_table.find_all('tr')
-    tasks = []
+    tasks = {}
+    try: #We need to load old tasks so they aren't forgotten/hidden
+        with open(student+"_Task_List.json",'r') as file:
+            prior_tasks = json.load(file)
+    except FileNotFoundError:
+        prior_tasks = {}
     date = None
     for task_row in task_rows:
         if task_row.find(class_='dateHeader') != None:
@@ -209,7 +214,10 @@ def pull_math_academy_assignment_data(grade = None, student = None):
                 points = int(task_row.find(class_='taskPointsColumn').text.strip().split('/')[0])
             else:
                 points = int(task_row.find(class_='taskPointsColumn').text.strip().split(' ')[0])
-            tasks.append({'task_id':task_id, 'points':points, 'date':date})
+            tasks[task_id] = {'points':points, 'date':date}
+    for task in prior_tasks:
+        if task not in tasks:
+            tasks[task] = prior_tasks[task]
     with open(student+"_Task_List.json",'w') as file:
         json.dump(tasks,file, indent = 4)
 
@@ -255,7 +263,10 @@ def update_xp_scores(grade = None, canvas_id = None, with_refresh = True, update
         assignment_id = str(assignment['id'])
         if (week < len(points) and
             needs_update(prior_scores[assignment_id],points[week])):
-            update = input(f"Update {name} score in week {week} from { prior_scores[assignment_id]} to {points[week]}? (y/n)")
+            if prior_scores[assignment_id] == None:
+                update = 'y'
+            else:
+                update = input(f"Update {name} score in week {week} from { prior_scores[assignment_id]} to {points[week]}? (y/n)")
             if update == 'y':
                 url = f"{course_domain}/{course_id}/assignments/{assignment_id}/submissions/{canvas_id}"
                 response = requests.put(url, headers=canvas_headers, json={
@@ -287,7 +298,7 @@ def weekly_total_xp(student_name):
     with open(student_name+"_Task_List.json",'r') as file:
         tasks = json.load(file)
     xp_totals = [0 for week in range(1+(today-start_date).days//7)]
-    for task in tasks:
+    for task in tasks.values():
         date = parser.parse(task['date'])
         if date > datetime.today():
             date = date.replace(year = 2024)
