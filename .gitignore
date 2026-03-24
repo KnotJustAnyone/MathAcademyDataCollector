@@ -1,2 +1,6 @@
 teacher_data.py
 *.json
+__pycache__/teacher_data.cpython-313.pyc
+RSA.py
+FTFGAG.py
+teacher_data.py
