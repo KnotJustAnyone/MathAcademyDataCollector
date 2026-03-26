@@ -339,9 +339,10 @@ for grade in course_ids:
 def prompt_to_update_scores():
     prompt = ("Update XP Scores?\n"+
             "0) Update none\n" +
-            "1) Update all\n"+
+            "1) Update 6 and 8\n"+
             "6) Update grade 6\n"+
-            "8) Update grade 8\n")
+            "8) Update grade 8\n"+
+            "10) Update grade 10 (In Progress)\n")
     try:
         grade = int(input(prompt))
     except:
