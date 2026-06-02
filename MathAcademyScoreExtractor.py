@@ -121,3 +121,4 @@ def process_task_list(task_rows):
                 points = int(task_row.find(class_='taskPointsColumn').text.strip().split(' ')[0])
             tasks[task_id] = {'points':points, 'date':date}
     return tasks
+

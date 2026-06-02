@@ -1,13 +1,11 @@
 import requests #For interfacing with websites
 import json
 import time
-from bs4 import BeautifulSoup
-from urllib.parse import urlparse
 from pathlib import Path
 from datetime import datetime
 from dateutil import parser
 import teacher_data #A file with all the credentials, a blank template is in the repository
-from MathAcademyScoreExtractor import pull_math_academy_roster, pull_math_academy_assignment_data, process_task_list
+from MathAcademyScoreExtractor import pull_math_academy_assignment_data
 
 debug_mode = False
 
@@ -255,7 +253,8 @@ def weekly_total_xp(student_name):
     for task in tasks.values():
         date = parser.parse(task['date'])
         if date > datetime.today():
-            date = date.replace(year = 2025)
+            break
+            #date = date.replace(year = 2025)
         week = (date-start_date).days//7
         if week < 0:
             week = 0
@@ -336,41 +335,49 @@ canvas_scores = {}
 for grade in course_ids:
     canvas_scores[grade]=load_scores(grade)
 
-def prompt_to_update_scores():
+def Main_Menu():
     prompt = ("Update XP Scores?\n"+
             "0) Update none\n" +
             "1) Update 6 and 8\n"+
             "6) Update grade 6\n"+
             "8) Update grade 8\n"+
-            "10) Update grade 10 (In Progress)\n")
-    try:
-        grade = int(input(prompt))
-    except:
-        print("Not a valid input")
-        grade = 0
-    if grade == 1: #update all
+            "10) Update grade 10 (In Progress)\n"+
+            "M) Menu of other option\n")
+    choice = input(prompt)
+    if choice == '1': #update all
         start_time = time.perf_counter()
         update_xp_scores()
         end_time = time.perf_counter()
         elapsed_time = end_time-start_time
         print(f"Time to completion: {elapsed_time:.6f} seconds")
-    elif grade == 10:
+    elif choice == '10':
+        grade = 10
         pull_math_academy_assignment_data(grade)
         roster = json.load(open(rosters_dir/("MA_Roster_"+str(grade)+".json"),"r"))
         for name in roster:
             xp_totals = weekly_total_xp(name)
             points = {week:xp_totals[week]/40 for week in range(len(xp_totals)-1)}
             apply_extra_credit_discount(points)
-            total_points = sum(points.values())-points[0]-points[max(points.keys())]
+            total_points = sum([points[j] for j in range(1,len(points)-1)])
             print(name, total_points)
-    elif grade > 0:
+        print(name, points)
+    elif choice in ['6','8']:
+        grade = int(choice)
         start_time = time.perf_counter()
         update_xp_scores(grade)
         end_time = time.perf_counter()
         elapsed_time = end_time-start_time
         print(f"Time to completion: {elapsed_time:.6f} seconds")
+    elif choice.lower() == 'm':
+        print("Expanded Menu incomplete")
+    elif choice.lower() == 'g':
+        pull_math_academy_assignment_data(grade='G')
+        name = "Giselle Leyva"
+        xp_totals = weekly_total_xp(name)
+        total_xp = sum([xp_totals[j] for j in range(1,len(xp_totals)-1)])
+        print(name, total_xp, xp_totals)
 
-prompt_to_update_scores()
+Main_Menu()
 
 prompt = ("Flag Students?\n"+
           "1) Annomolous xp this week\n"+
@@ -393,3 +400,4 @@ if flags == '2':
             for canvas_id in flagged_students[grade_level][week]:
                 name = canvas_roster[grade_level][canvas_id]
                 print(f"{canvas_roster[grade_level][canvas_id]}: {flagged_students[grade_level][week][canvas_id]}")
+
