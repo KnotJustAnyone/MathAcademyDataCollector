@@ -368,6 +368,13 @@ def Main_Menu():
         end_time = time.perf_counter()
         elapsed_time = end_time-start_time
         print(f"Time to completion: {elapsed_time:.6f} seconds")
+    elif choice.lower() == "ec6":
+        grade = 6
+        pull_math_academy_assignment_data(grade)
+        roster = json.load(open(rosters_dir/("MA_Roster_"+str(grade)+".json"),"r"))
+        for name in roster:
+            xp_totals = weekly_total_xp(name)
+            print(name, xp_totals[-1])
     elif choice.lower() == 'm':
         print("Expanded Menu incomplete")
     elif choice.lower() == 'g':
