@@ -176,7 +176,7 @@ def grade_topic_tree(grade = None):
             json.dump(topics,file,indent=4)
     if grade == 7:
         topics = {}
-        for course in range(3,4):
+        for course in range(2,4):
             topics.update(course_topics(course))
         with open(tree_dir/f"grade{grade}Tree.json",'x') as file:
             json.dump(topics,file,indent=4)
@@ -190,6 +190,14 @@ def assign_depth(topic,topics):
             depth = max(depth,assign_depth(prereq,topics)+1)
     topics[topic]['depth'] = depth
     return depth
+
+def find_all_prereqs(topic,topics):
+    if not topics[topic]['full_prereqs']:
+        topics[topic]['full_prereqs'] = []
+        for prereq in topics[topic]['prereqs']:
+            topics[topic]['full_prereqs'] += find_all_prereqs(prereq,topics)
+        topics[topic]['full_prereqs'] = list(dict.fromkeys(topics[topic]['full_prereqs']))
+    return topics[topic]['full_prereqs']+[topic]
 
 def find_terminal_topics(topics):
     prerequisites = set()
@@ -210,7 +218,8 @@ def analyze_tree(tree,choice):
             print("1: Count Topics")
             print("2: List Terminal Tasks")
             print("3: Assign Task Depth")
-            print("4: Identify prunable tasks (highest depth leaf nodes)")
+            print("4: Create full prereq list")
+            print("5: Identify prunable tasks")
             choice = input()
         if choice == '':
             return None
@@ -219,8 +228,8 @@ def analyze_tree(tree,choice):
             choice = ''
         elif choice[0] == '2':
             terminal_topics = find_terminal_topics(topics)
-            for topic in terminal_topics:
-                print(f"{topic}:{topics[topic]['name']}:Depth {topics[topic]['depth']}")
+            for topic in sorted(terminal_topics, key = lambda k:topics[k]['weight']):
+                print(f"{topic}:{topics[topic]['name']}:Weight {topics[topic]['weight']}")
             print(f"There are {len(terminal_topics)} terminal topics")
             choice = ''
         elif choice[0] == '3':
@@ -233,13 +242,30 @@ def analyze_tree(tree,choice):
             print("Depths Assigned")
             choice = ''
         elif choice[0] == '4':
-            terminal_topics = find_terminal_topics(topics)
-            leaf_nodes = []
-            for topic in terminal_topics:
-                if len(topics[topic]['prereqs']) < 2:
-                    leaf_nodes.append(topic)
-            for topic in leaf_nodes:
-                print(f"{topic}:{topics[topic]['name']}")
+            for topic in topics:
+                topics[topic]['full_prereqs'] = None
+            for topic in topics:
+                find_all_prereqs(topic,topics)
+                topics[topic]['weight'] = len(topics[topic]['full_prereqs'])+1
+            with open(tree,'w') as file:
+                json.dump(topics,file,indent=4)
+            print("Full Prereqs Assigned")
+            choice = ''
+        elif choice[0] == '5':
+            prunable_topics = find_terminal_topics(topics)
+            for topic in prunable_topics.copy():
+                if topics[topic]['course'] != 'integrated-math-ii-honors':
+                    prunable_topics.remove(topic)
+                elif len(topics[topic]['prereqs']) > 1:
+                    prunable_topics.remove(topic)
+            for topic in prunable_topics:
+                delete = input(f"Delete {topics[topic]['name']}? (y/n)")
+                if delete == 'y':
+                    topics.pop(topic)
+                    print("Deleted")
+            print("Phase 1 deletions complete")
+            with open(tree,'w') as file:
+                json.dump(topics,file,indent=4)
             choice = ''
         else:
             choice = ''
