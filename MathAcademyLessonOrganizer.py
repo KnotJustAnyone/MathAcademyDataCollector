@@ -21,8 +21,6 @@ from pathlib import Path
 tree_dir = Path(__file__).resolve().parent/"trees"
 tree_dir.mkdir(exist_ok=True)
 
-trees = [tree for tree in tree_dir.iterdir()]
-
 def main_menu():
     print("This code is being designed to gather the prerequsite tree from MathAcademy.com")
     choice = ''
@@ -46,14 +44,15 @@ def main_menu():
                 course = choose_course()
             course_topics(course)
             choice = ''
-        if choice[0] == '2':
+        elif choice[0] == '2':
+            trees = [tree for tree in tree_dir.iterdir()]
             if len(choice) > 1:
-                tree_num = int(choice[1:])
+                tree = trees[int(choice[1:])]
             else:
-                tree_num = choose_tree()
-            clear_assumed_prerequisites(tree_num)
+                tree = choose_tree()
+            clear_assumed_prerequisites(tree)
             choice = ''
-        if choice[0] == '3':
+        elif choice[0] == '3':
             choice = choice[1:]
             if len(choice) > 0:
                 grade = int(choice[0])
@@ -65,14 +64,15 @@ def main_menu():
                     grade = None
             grade_topic_tree(grade)
             choice = ''
-        if choice[0] == '4':
+        elif choice[0] == '4':
             choice = choice[1:]
+            trees = [tree for tree in tree_dir.iterdir()]
             if len(choice) > 0:
-                tree_num = int(choice[0])
+                tree = trees[int(choice[0])]
                 choice = choice[1:]
             else:
-                tree_num = choose_tree()
-            analyze_tree(tree_num,choice)
+                tree = choose_tree()
+            analyze_tree(tree,choice)
             choice = ''
 
 def choose_course():
@@ -90,6 +90,7 @@ def choose_course():
     return course
 
 def choose_tree():
+    trees = [tree for tree in tree_dir.iterdir()]
     print("Which tree do you want to manipulate?")
     for i in range(len(trees)):
         print(f"{i}: {trees[i].stem}")
@@ -98,7 +99,7 @@ def choose_tree():
     try:
         choice = int(choice)
         if choice < len(trees):
-            return choice
+            return trees[choice]
         else:
             return None
     except:
@@ -115,7 +116,7 @@ def course_topics(course):
         if reload.lower() != 'y':
             return topics
     except:
-        print("Data not found")
+        print(f"Data not found, Generating Tree for {course_name}")
     url = courses_url+course_name
     response = requests.get(url,headers=ma_headers,cookies=cookies)
     soup = BeautifulSoup(response.text, "lxml")
@@ -132,7 +133,7 @@ def course_topics(course):
         if name == None:
             print(link)
             exit()
-        topics[topic_id] = {'name':name}
+        topics[topic_id] = {'name':name, 'course':course_name}
     for topic in topics:
         topics[topic]['prereqs'] = find_prereqs(topic)
     with open(tree_dir/f"{course_name}.json",'w') as file:
@@ -154,8 +155,7 @@ def find_prereqs(topic):
             pass
     return prereqs
 
-def clear_assumed_prerequisites(tree_num):
-    tree = trees[tree_num]
+def clear_assumed_prerequisites(tree):
     with open(tree,'r') as file:
         topics = json.load(file)
     for topic in topics:
@@ -201,8 +201,7 @@ def find_terminal_topics(topics):
             terminal_topics.append(topic)
     return terminal_topics
 
-def analyze_tree(tree_num,choice):
-    tree = trees[tree_num]
+def analyze_tree(tree,choice):
     with open(tree,'r') as file:
         topics = json.load(file)
     while True:
