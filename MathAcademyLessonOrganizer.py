@@ -228,7 +228,7 @@ def analyze_tree(tree,choice):
             choice = ''
         elif choice[0] == '2':
             terminal_topics = find_terminal_topics(topics)
-            for topic in sorted(terminal_topics, key = lambda k:topics[k]['weight']):
+            for topic in terminal_topics:
                 print(f"{topic}:{topics[topic]['name']}:Weight {topics[topic]['weight']}")
             print(f"There are {len(terminal_topics)} terminal topics")
             choice = ''
