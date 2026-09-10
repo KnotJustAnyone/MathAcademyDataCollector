@@ -1,10 +1,8 @@
 import requests #For interfacing with websites
 import json
-import time
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 from pathlib import Path
-from datetime import datetime
 from dateutil import parser
 import teacher_data #A file with all the credentials, a blank template is in the repository
 
@@ -55,9 +53,11 @@ def pull_math_academy_roster(grade):
         student_url = student[0].find('a').get('href')
         parts = urlparse(student_url).path.split('/')
         student_id = parts[-2]
+        student = student[0].find_all("div")
         student_name = normalize_name(student[0].get_text(strip=True))
         roster[student_name]=student_id
     json.dump(roster, open(rosters_dir/("MA_Roster_"+str(grade)+".json"),"w"), indent = 4)
+    return roster
     
 
 #Pulls the data from the activity page of a student
@@ -69,7 +69,10 @@ def pull_math_academy_assignment_data(grade = None, student = None):
     class_id = class_ids[grade]
     if debug_mode:
         print(f"class_id = {class_id}")
-    roster = json.load(open(rosters_dir/("MA_Roster_"+str(grade)+".json"),"r"))
+    try:
+        roster = json.load(open(rosters_dir/("MA_Roster_"+str(grade)+".json"),"r"))
+    except:
+        roster = pull_math_academy_roster(grade)
     if student == None:
         for name in roster:
             pull_math_academy_assignment_data(grade, name)
@@ -81,14 +84,8 @@ def pull_math_academy_assignment_data(grade = None, student = None):
         print(f"Response Code Problem: {response.status_code}")
         exit()
     soup = BeautifulSoup(response.text, "lxml")
-    tables = soup.find_all('table')
-    task_table = None
-    for table in tables:
-        if len(table.find_all('tr')) > 20:
-            task_table = table
-    if not task_table:
-        print("Error, no table long enough to be task table")
-        exit()
+    tasksFrame = soup.find('div',id='tasksFrame')
+    task_table = tasksFrame.find('table')
     task_rows = task_table.find_all('tr')
     tasks = process_task_list(task_rows) #loads all currently visible tasks
     try: #Loads old tasks in case they fell off the bottom of the site

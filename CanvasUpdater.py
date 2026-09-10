@@ -168,6 +168,7 @@ def save_canvas_scores(grade):
 
 #In Progress
 #Computes points per week and updates them
+#grade is an int
 def update_xp_scores(grade = None, canvas_id = None, with_refresh = True, update_after = True):
     if grade == None:
         for grade in course_ids:
@@ -203,6 +204,8 @@ def update_xp_scores(grade = None, canvas_id = None, with_refresh = True, update
         if (len(assignment['name']) > 10 and assignment['name'][:10] == 'Weekly XP '):
             week = int(assignment['name'][10:])
             assignment_id = str(assignment['id'])
+            if assignment_id not in prior_scores:
+                prior_scores[assignment_id] = None
             if (week not in exceptions and
                 week in points.keys() and
                 needs_update(prior_scores[assignment_id],points[week])):
@@ -245,7 +248,7 @@ def apply_extra_credit_discount(points):
 
 #Looks at the list of tasks and determines the number of xp in each week
 def weekly_total_xp(student_name):
-    start_date = datetime(2025,12,29) #Represents one week before, so week 0 is all of summer
+    start_date = datetime(2026,8,10) #Represents one week before, so week 0 is all of summer
     today = datetime.today()
     with open(tasks_dir/(student_name+"_Task_List.json"),'r') as file:
         tasks = json.load(file)
@@ -338,10 +341,8 @@ for grade in course_ids:
 def Main_Menu():
     prompt = ("Update XP Scores?\n"+
             "0) Update none\n" +
-            "1) Update 6 and 8\n"+
-            "6) Update grade 6\n"+
-            "8) Update grade 8\n"+
-            "10) Update grade 10 (In Progress)\n"+
+            "1) Update all\n"+
+            "number) Update that grade\n"+
             "M) Menu of other option\n")
     choice = input(prompt)
     if choice == '1': #update all
@@ -350,18 +351,7 @@ def Main_Menu():
         end_time = time.perf_counter()
         elapsed_time = end_time-start_time
         print(f"Time to completion: {elapsed_time:.6f} seconds")
-    elif choice == '10':
-        grade = 10
-        pull_math_academy_assignment_data(grade)
-        roster = json.load(open(rosters_dir/("MA_Roster_"+str(grade)+".json"),"r"))
-        for name in roster:
-            xp_totals = weekly_total_xp(name)
-            points = {week:xp_totals[week]/40 for week in range(len(xp_totals)-1)}
-            apply_extra_credit_discount(points)
-            total_points = sum([points[j] for j in range(1,len(points)-1)])
-            print(name, total_points)
-        print(name, points)
-    elif choice in ['6','8']:
+    elif choice in ['6','7','9','10']:
         grade = int(choice)
         start_time = time.perf_counter()
         update_xp_scores(grade)
@@ -377,12 +367,6 @@ def Main_Menu():
             print(name, xp_totals[-1])
     elif choice.lower() == 'm':
         print("Expanded Menu incomplete")
-    elif choice.lower() == 'g':
-        pull_math_academy_assignment_data(grade='G')
-        name = "Giselle Leyva"
-        xp_totals = weekly_total_xp(name)
-        total_xp = sum([xp_totals[j] for j in range(1,len(xp_totals)-1)])
-        print(name, total_xp, xp_totals)
 
 Main_Menu()
 
