@@ -106,7 +106,8 @@ def process_task_list(task_rows):
     for task_row in task_rows:
         if task_row.find(class_='dateHeader') != None:
             new_date = task_row.find(class_='dateHeader').text.split('\n')[2].strip()
-            if date != None and parser.parse(date) < parser.parse(new_date):
+            if new_date.endswith("Feb 29th") or (
+            date != None and parser.parse(date) < parser.parse(new_date)):
                 break
             else:
                 date = task_row.find(class_='dateHeader').text.split('\n')[2].strip()
