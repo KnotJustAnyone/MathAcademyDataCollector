@@ -2,7 +2,7 @@ import requests #For interfacing with websites
 import json
 import time
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from dateutil import parser
 import teacher_data #A file with all the credentials, a blank template is in the repository
 from MathAcademyScoreExtractor import pull_math_academy_assignment_data
@@ -20,6 +20,7 @@ sitework_group_ids = teacher_data.sitework_group_ids
 
 #UPDATE - Represents last digit of year
 semester = 6
+start_date = datetime(2026,8,10)
 
 #Headers for the web requests
 canvas_headers = {"Authorization": f"Bearer {access_token}"}
@@ -85,31 +86,34 @@ def normalize_name(name):
 def create_homework_assignment(grade, weekNumber, date, points):
     course_id = course_ids[grade]
     url = f'{course_domain}/{course_id}/assignments'
-    assignment = assaignment_template
+    assignment = assaignment_template.copy()
     assignment["name"] = "Weekly XP " + str(weekNumber)
     assignment["points_possible"] = points
-    assignment["due_at"] = date+"T06:59:00Z"
+    assignment["due_at"] = date.strftime("%Y-%m-%dT06:59:00Z")
     assignment["assignment_group_id"] = sitework_group_ids[grade]
     payload = {
         "assignment": assignment
     }
     response = requests.post(url, headers=canvas_headers, json=payload)
+    print(response.text)
 
 #Will need to replace load_weeks function
 #Adds all XP Assignments for the current semester
-'''
-def create_homework_assignments(grade = None): 
+def create_homework_assignments(grade = None):
     if grade == None:
-        create_homework_assignments(6)
-        create_homework_assignments(8)
+        for a_grade in course_ids:
+            create_homework_assignments(grade)
         return
     assignment_names = [assignment['name'] for
                         assignment in load_assignments(grade)]
-    weeks = load_weeks()
+    last_week = int(input("Last Week Number:"))
+    weeks = range(1,last_week+1)
+    point_target = 5
+    if grade > 8: point_target = 2.25
     for week in weeks:
-        if "Weekly XP " + str(week[0]) not in assignment_names:
-            create_homework_assignment(grade, week[0], week[1], week[2])
-'''
+        if "Weekly XP " + str(week) not in assignment_names:
+            create_homework_assignment(grade, week,(start_date + timedelta(days=7*(week+1))), point_target)
+
 
 #Returns a list of assignment dictionaries with keys
 # 'id', 'due_at', 'points_possible', 'name'
@@ -247,8 +251,7 @@ def apply_extra_credit_discount(points):
     return
 
 #Looks at the list of tasks and determines the number of xp in each week
-def weekly_total_xp(student_name):
-    start_date = datetime(2026,8,10) #Represents one week before, so week 0 is all of summer
+def weekly_total_xp(student_name): #Represents one week before, so week 0 is all of summer
     today = datetime.today()
     with open(tasks_dir/(student_name+"_Task_List.json"),'r') as file:
         tasks = json.load(file)
@@ -333,7 +336,7 @@ try:
         with open(rosters_dir/f'canvas_roster_{grade}.json','r') as file:
             canvas_roster[grade] = json.load(file)
 except FileNotFoundError:
-    update_canvas_roster(None)
+    canvas_roster = update_canvas_roster(None)
 canvas_scores = {}
 for grade in course_ids:
     canvas_scores[grade]=load_scores(grade)
@@ -366,7 +369,24 @@ def Main_Menu():
             xp_totals = weekly_total_xp(name)
             print(name, xp_totals[-1])
     elif choice.lower() == 'm':
-        print("Expanded Menu incomplete")
+        prompt = ("0) Do Nothing\n" +
+                    "1) Create Assignments\n" +
+                    "2) Sitework Group Ids\n")
+        choice = input(prompt)
+        if choice == '1':
+            grade = int(input("Which Grade?"))
+            create_homework_assignments(grade)
+        if choice == '2':
+            for grade in course_ids:
+                print(grade)
+                assignment_group_ids(grade)
+        if choice == 't':
+            print("Testing assignment creation")
+            grade = 9
+            week = 6
+            date = (start_date + timedelta(days=7*week))
+            create_homework_assignment(grade, week, date, 2.25)
+
 
 Main_Menu()
 
