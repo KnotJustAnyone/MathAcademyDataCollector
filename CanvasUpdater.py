@@ -2,12 +2,10 @@ import requests #For interfacing with websites
 import json
 import time
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from dateutil import parser
 import teacher_data #A file with all the credentials, a blank template is in the repository
 from MathAcademyScoreExtractor import pull_math_academy_assignment_data
-from MathAcademyScoreExtractor import pull_math_academy_roster
-from MathAcademyScoreExtractor import get_xp_totals
 
 debug_mode = False
 
@@ -16,14 +14,13 @@ canvas_domain = "https://pasadena.instructure.com"
 course_domain = f"{canvas_domain}/api/v1/courses"
 
 #localize imported data
-max_points = teacher_data.max_points
 access_token = teacher_data.access_token
 course_ids = teacher_data.course_ids
 sitework_group_ids = teacher_data.sitework_group_ids
-assignment_name = teacher_data.assignment_name
 
 #UPDATE - Represents last digit of year
 semester = 6
+start_date = datetime(2026,8,10)
 
 #Headers for the web requests
 canvas_headers = {"Authorization": f"Bearer {access_token}"}
@@ -33,8 +30,6 @@ data_dir = Path(__file__).resolve().parent/"data"
 data_dir.mkdir(exist_ok=True)
 rosters_dir = data_dir/"rosters"
 rosters_dir.mkdir(exist_ok=True)
-scores_dir = data_dir/"scores"
-scores_dir.mkdir(exist_ok=True)
 tasks_dir = data_dir/"task_data"
 tasks_dir.mkdir(exist_ok=True)
 
@@ -72,44 +67,53 @@ def update_canvas_roster(grade):
         "type[]": "StudentEnrollment",
         "per_page": 100
     }
-    pull_math_academy_roster(grade)
-    MA_roster = json.load(open(rosters_dir/("MA_Roster_"+str(grade)+".json"),"r"))
     raw_roster = requests.get(url, headers=canvas_headers, params=params).json()
-    roster = {student['user_id']: [student['user']['name'],MA_roster[student['user']['name']][1]] for student in raw_roster}
+    roster = {student['user_id']: student['user']['name'] for student in raw_roster}
     with open(rosters_dir/('canvas_roster_'+str(grade)+'.json'),'w') as file:
         json.dump(roster, file, indent=4)
 
+#Converts Last, First format of name to First Last
+#MA uses Last, First. Canvas uses First Last
+def normalize_name(name):
+    if "," in name:
+        last, first = [part.strip() for part in name.split(",", 1)]
+        return f"{first} {last}"
+    else:
+        return name
 
 #Creates a weekly homework assignment with a specified index, date, and number of points
 #Date is actually the day after it is meant to be due because of time zone change
 def create_homework_assignment(grade, weekNumber, date, points):
     course_id = course_ids[grade]
     url = f'{course_domain}/{course_id}/assignments'
-    assignment = assaignment_template
+    assignment = assaignment_template.copy()
     assignment["name"] = "Weekly XP " + str(weekNumber)
     assignment["points_possible"] = points
-    assignment["due_at"] = date+"T06:59:00Z"
+    assignment["due_at"] = date.strftime("%Y-%m-%dT06:59:00Z")
     assignment["assignment_group_id"] = sitework_group_ids[grade]
     payload = {
         "assignment": assignment
     }
     response = requests.post(url, headers=canvas_headers, json=payload)
+    print(response.text)
 
 #Will need to replace load_weeks function
 #Adds all XP Assignments for the current semester
-'''
-def create_homework_assignments(grade = None): 
+def create_homework_assignments(grade = None):
     if grade == None:
-        create_homework_assignments(6)
-        create_homework_assignments(8)
+        for a_grade in course_ids:
+            create_homework_assignments(grade)
         return
     assignment_names = [assignment['name'] for
                         assignment in load_assignments(grade)]
-    weeks = load_weeks()
+    last_week = int(input("Last Week Number:"))
+    weeks = range(1,last_week+1)
+    point_target = 5
+    if grade > 8: point_target = 2.25
     for week in weeks:
-        if "Weekly XP " + str(week[0]) not in assignment_names:
-            create_homework_assignment(grade, week[0], week[1], week[2])
-'''
+        if "Weekly XP " + str(week) not in assignment_names:
+            create_homework_assignment(grade, week,(start_date + timedelta(days=7*(week+1))), point_target)
+
 
 #Returns a list of assignment dictionaries with keys
 # 'id', 'due_at', 'points_possible', 'name'
@@ -124,6 +128,18 @@ def load_assignments(grade):
                    for assignment in response.json()]
     return assignments
 
+#Checks if a score is different enough
+# to be not a rounding error
+def needs_update(n_old,n_new):
+    try:
+        n = float(n_new)
+    except ValueError:
+        return False
+    try:
+        return abs(n-float(n_old)) > 0.001
+    except (ValueError, TypeError):
+        return True
+
 #Loads the scores that are on canvas from a json file
 #Formatted as a nested dictionary
 #student id -> assignment id -> score
@@ -133,7 +149,7 @@ def load_scores(grade):
         return json.load(file)
     except FileNotFoundError:
         save_canvas_scores(grade)
-        return load_scores(grade)
+        load_scores(grade)
 
 #Updates the scores in a json file with the scores from canvas
 def save_canvas_scores(grade):
@@ -156,12 +172,12 @@ def save_canvas_scores(grade):
 
 #In Progress
 #Computes points per week and updates them
+#grade is an int
 def update_xp_scores(grade = None, canvas_id = None, with_refresh = True, update_after = True):
     if grade == None:
         for grade in course_ids:
             if debug_mode:
                 print(f"grade = {grade}")
-            get_xp_totals(grade)
             update_xp_scores(grade, canvas_id, with_refresh, update_after)
         return
     if canvas_id == None:
@@ -177,22 +193,23 @@ def update_xp_scores(grade = None, canvas_id = None, with_refresh = True, update
         return
     name = canvas_roster[grade][canvas_id]
     if debug_mode:
-        print(f"name = {name[0]}")
+        print(f"name = {name}")
     if with_refresh:
-        pull_math_academy_assignment_data(grade, name[0])
-    xp_totals = weekly_total_xp(name[0])
-    #Ignore current week, expected_xp/max_points is 1 point;
-    expected_xp = int(name[1])
-    points = {week:max_points*xp_totals[week]/expected_xp for week in range(len(xp_totals))}
+        pull_math_academy_assignment_data(grade, name)
+    xp_totals = weekly_total_xp(name)
+    #Ignore current week, 40 xp is 1 point
+    points = {week:xp_totals[week]/40 for week in range(len(xp_totals)-1)}
     apply_extra_credit_discount(points)
     prior_scores = canvas_scores[grade][canvas_id]
     assignments = load_assignments(grade)
     homeworks = []
     exceptions = xp_update_exceptions(canvas_id)
     for assignment in assignments:
-        if (len(assignment['name']) > len(assignment_name) and assignment['name'][:len(assignment_name)] == assignment_name):
-            week = int(assignment['name'][len(assignment_name):])
+        if (len(assignment['name']) > 10 and assignment['name'][:10] == 'Weekly XP '):
+            week = int(assignment['name'][10:])
             assignment_id = str(assignment['id'])
+            if assignment_id not in prior_scores:
+                prior_scores[assignment_id] = None
             if (week not in exceptions and
                 week in points.keys() and
                 needs_update(prior_scores[assignment_id],points[week])):
@@ -202,28 +219,16 @@ def update_xp_scores(grade = None, canvas_id = None, with_refresh = True, update
         save_canvas_scores(grade)
         print("Saved Scores Updated")
 
-#Checks if a score is different enough
-# to be not a rounding error
-def needs_update(n_old,n_new): 
-    try:
-        n = float(n_new)
-    except ValueError:
-        return False
-    try:
-        return abs(n-float(n_old)) > 0.001
-    except (ValueError, TypeError):
-        return True
-
 #updates the scores which need to be based on the prior_scores and points
 def push_update_to_canvas(homeworks, prior_scores, grade, canvas_id, points):
     course_id =  course_ids[grade]
     for assignment in homeworks:
-        week = int(assignment['name'][len(assignment_name):])
+        week = int(assignment['name'][10:])
         assignment_id = str(assignment['id'])
         if (week < len(points) and
             needs_update(prior_scores[assignment_id],points[week])):
             name = canvas_roster[grade][canvas_id]
-            if (prior_scores[assignment_id] == None or 
+            if (prior_scores[assignment_id] == None or
                 input(f"Update {name} score in week {week} from { prior_scores[assignment_id]}"+
                       f"to {points[week]}? (y/n)") == 'y'):
                 url = f"{course_domain}/{course_id}/assignments/{assignment_id}/submissions/{canvas_id}"
@@ -238,22 +243,15 @@ def push_update_to_canvas(homeworks, prior_scores, grade, canvas_id, points):
                 else:
                     print(f"Updated {assignment['name']} - {name}:{prior_scores[assignment_id]}->{points[week]}")
 
-#XP beyond 250 is supposed to count half, so points beyond 5 are half
+#XP beyond 200 is supposed to count half, so points beyond 5 are half
 def apply_extra_credit_discount(points):
     for week in range(len(points)):
-        pts = points[week]
-        points[week] = 0
-        exp = 0
-        while pts > max_points:
-            points[week] += max_points/(2**exp)
-            pts -= max_points
-            exp += 1
-        points[week] += pts/(2**exp)
+        if points[week] > 5:
+            points[week] = 5+(points[week]-5)/2
     return
 
 #Looks at the list of tasks and determines the number of xp in each week
-def weekly_total_xp(student_name):
-    start_date = datetime(2026,8,10) #Represents one week before, so week 0 is all of summer
+def weekly_total_xp(student_name): #Represents one week before, so week 0 is all of summer
     today = datetime.today()
     with open(tasks_dir/(student_name+"_Task_List.json"),'r') as file:
         tasks = json.load(file)
@@ -332,15 +330,13 @@ def flag_students_weeks_xp(grade = None, z_squared_cutoff = 3):
     return stats, flagged_ids
 
 #Loads data which is called for multiple times at file run
-canvas_roster = {}
-for grade in course_ids:
-    try:
+try:
+    canvas_roster = {}
+    for grade in course_ids:
         with open(rosters_dir/f'canvas_roster_{grade}.json','r') as file:
             canvas_roster[grade] = json.load(file)
-    except FileNotFoundError:
-        update_canvas_roster(grade)
-        with open(rosters_dir/f'canvas_roster_{grade}.json','r') as file:
-            canvas_roster[grade] = json.load(file)
+except FileNotFoundError:
+    canvas_roster = update_canvas_roster(None)
 canvas_scores = {}
 for grade in course_ids:
     canvas_scores[grade]=load_scores(grade)
@@ -349,30 +345,16 @@ def Main_Menu():
     prompt = ("Update XP Scores?\n"+
             "0) Update none\n" +
             "1) Update all\n"+
-            "8) Update grade 8\n"+
-            "11) Update grade 11\n"+
-            "12) Update grade 12 (In Progress)\n"+
+            "number) Update that grade\n"+
             "M) Menu of other option\n")
     choice = input(prompt)
     if choice == '1': #update all
         start_time = time.perf_counter()
-        pull_math_academy_roster(grade=None)
         update_xp_scores()
         end_time = time.perf_counter()
         elapsed_time = end_time-start_time
         print(f"Time to completion: {elapsed_time:.6f} seconds")
-    elif choice == '10':
-        grade = 10
-        pull_math_academy_assignment_data(grade)
-        roster = json.load(open(rosters_dir/("MA_Roster_"+str(grade)+".json"),"r"))
-        for name in roster:
-            xp_totals = weekly_total_xp(name)
-            points = {week:xp_totals[week]/25 for week in range(len(xp_totals)-1)}
-            apply_extra_credit_discount(points)
-            total_points = sum([points[j] for j in range(1,len(points)-1)])
-            print(name, total_points)
-        print(name, points)
-    elif choice in ['8']:
+    elif choice in ['6','7','9','10']:
         grade = int(choice)
         start_time = time.perf_counter()
         update_xp_scores(grade)
@@ -387,13 +369,24 @@ def Main_Menu():
             xp_totals = weekly_total_xp(name)
             print(name, xp_totals[-1])
     elif choice.lower() == 'm':
-        print("Expanded Menu incomplete")
-    elif choice.lower() == 'g':
-        pull_math_academy_assignment_data(grade='G')
-        name = "Giselle Leyva"
-        xp_totals = weekly_total_xp(name)
-        total_xp = sum([xp_totals[j] for j in range(1,len(xp_totals)-1)])
-        print(name, total_xp, xp_totals)
+        prompt = ("0) Do Nothing\n" +
+                    "1) Create Assignments\n" +
+                    "2) Sitework Group Ids\n")
+        choice = input(prompt)
+        if choice == '1':
+            grade = int(input("Which Grade?"))
+            create_homework_assignments(grade)
+        if choice == '2':
+            for grade in course_ids:
+                print(grade)
+                assignment_group_ids(grade)
+        if choice == 't':
+            print("Testing assignment creation")
+            grade = 9
+            week = 6
+            date = (start_date + timedelta(days=7*week))
+            create_homework_assignment(grade, week, date, 2.25)
+
 
 Main_Menu()
 

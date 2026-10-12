@@ -1,10 +1,8 @@
 import requests #For interfacing with websites
 import json
-import time
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 from pathlib import Path
-from datetime import datetime
 from dateutil import parser
 import teacher_data #A file with all the credentials, a blank template is in the repository
 
@@ -28,8 +26,6 @@ data_dir = Path(__file__).resolve().parent/"data"
 data_dir.mkdir(exist_ok=True)
 rosters_dir = data_dir/"rosters"
 rosters_dir.mkdir(exist_ok=True)
-scores_dir = data_dir/"scores"
-scores_dir.mkdir(exist_ok=True)
 tasks_dir = data_dir/"task_data"
 tasks_dir.mkdir(exist_ok=True)
 
@@ -59,15 +55,10 @@ def pull_math_academy_roster(grade):
         student_id = parts[-2]
         student = student[0].find_all("div")
         student_name = normalize_name(student[0].get_text(strip=True))
-        xp_url = f"https://www.mathacademy.com/students/{student_id}/settings/xp-goals"
-        xp_response = requests.get(xp_url,headers=ma_headers,cookies=cookies)
-        xp_soup = BeautifulSoup(xp_response.text, "lxml")
-        xp_table = xp_soup.find(id = "xpGoals")
-        xp_data = [row.find('input').get('value') for row in xp_table.find_all("tr")[1].find_all("td")]
-        roster[student_name]=[student_id,sum(int(xp) for xp in xp_data)]
+        roster[student_name]=student_id
     json.dump(roster, open(rosters_dir/("MA_Roster_"+str(grade)+".json"),"w"), indent = 4)
+    return roster
     
-
 #Pulls the data from the activity page of a student
 def pull_math_academy_assignment_data(grade = None, student = None):
     if grade == None:
@@ -77,27 +68,23 @@ def pull_math_academy_assignment_data(grade = None, student = None):
     class_id = class_ids[grade]
     if debug_mode:
         print(f"class_id = {class_id}")
-    pull_math_academy_roster(grade)
-    roster = json.load(open(rosters_dir/("MA_Roster_"+str(grade)+".json"),"r"))
+    try:
+        roster = json.load(open(rosters_dir/("MA_Roster_"+str(grade)+".json"),"r"))
+    except:
+        roster = pull_math_academy_roster(grade)
     if student == None:
         for name in roster:
-            pull_math_academy_assignment_data(grade, name[0])
-            print(f"Pulled {name[0]} assignment data")
+            pull_math_academy_assignment_data(grade, name)
+            print(f"Pulled {name} assignment data")
         return
-    url = f"https://mathacademy.com/classes/{class_id}/students/{roster[student][0]}/activity"
+    url = f"https://mathacademy.com/classes/{class_id}/students/{roster[student]}/activity"
     response = requests.get(url,headers=ma_headers,cookies=cookies)
     if response.status_code != 200:
         print(f"Response Code Problem: {response.status_code}")
         exit()
     soup = BeautifulSoup(response.text, "lxml")
-    tables = soup.find_all('table')
-    task_table = None
-    for table in tables:
-        if len(table.find_all('tr')) > 20:
-            task_table = table
-    if not task_table:
-        print("Error, no table long enough to be task table")
-        exit()
+    tasksFrame = soup.find('div',id='tasksFrame')
+    task_table = tasksFrame.find('table')
     task_rows = task_table.find_all('tr')
     tasks = process_task_list(task_rows) #loads all currently visible tasks
     try: #Loads old tasks in case they fell off the bottom of the site
@@ -118,7 +105,8 @@ def process_task_list(task_rows):
     for task_row in task_rows:
         if task_row.find(class_='dateHeader') != None:
             new_date = task_row.find(class_='dateHeader').text.split('\n')[2].strip()
-            if date != None and parser.parse(date) < parser.parse(new_date):
+            if new_date.endswith("Feb 29th") or (
+            date != None and parser.parse(date) < parser.parse(new_date)):
                 break
             else:
                 date = task_row.find(class_='dateHeader').text.split('\n')[2].strip()
@@ -130,35 +118,4 @@ def process_task_list(task_rows):
                 points = int(task_row.find(class_='taskPointsColumn').text.strip().split(' ')[0])
             tasks[task_id] = {'points':points, 'date':date}
     return tasks
-
-def weekly_total_xp(student_name):
-    start_date = datetime(2026,8,17) #Represents one week before, so week 0 is all of summer
-    today = datetime.today()
-    with open(tasks_dir/(student_name+"_Task_List.json"),'r') as file:
-        tasks = json.load(file)
-    xp_totals = [0 for week in range(1+(today-start_date).days//7)]
-    print(today-start_date)
-    for task in tasks:
-        date = parser.parse(task['date'])
-        if date > datetime.today():
-            date = date.replace(year = 2025)
-        week = (date-start_date).days//7
-        if week < 0:
-            week = 0
-        xp_totals[week] += task['points']
-    return xp_totals
-
-def get_xp_totals(grade=None):
-    if grade == None:
-        for grade in class_ids:
-            get_xp_totals(grade)
-        return
-    roster = json.load(open(rosters_dir/("MA_Roster_"+str(grade)+".json"),"r"))
-    scores = dict()
-    for student in roster:
-        try:
-            scores[student] = weekly_total_xp(student)
-        except ValueError:
-            print(student)
-    json.dump(scores, open(scores_dir/("MA_Scores_"+str(grade)+".json"),"w"), indent = 4)
 
